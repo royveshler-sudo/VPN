@@ -1,5 +1,6 @@
 import socket
 from AESCryptoHandler import AESCryptoHandler
+import pydivert
 
 
 def initialize_server_socket(server_ip: str, server_port: int) -> socket.socket:
@@ -28,10 +29,49 @@ def receive_packet_from_client(conn: socket.bytes) -> bytes:
         encrypted_data += chunk
     return encrypted_data
 
+def create_new_packet(decrypted_data: bytes, server_ip: str):
+    packet = pydivert.Packet(decrypted_data)
+    packet.src_addr = server_ip
+    return packet
+
+
+def send_packet_to_target(target_sock: socket.socket, packet: pydivert.Packet):
+    try:
+        if packet.payload:
+            target_sock.sendall(packet.payload)
+    except Exception as e:
+        print(f"[Error sending to target]: {e}")
+
+def receive_packet_from_target(target_sock: socket.socket):
+    try:
+        data = target_sock.recv(65535)
+        return data
+    except Exception as e:
+        print(f"[Error receiving from target]: {e}")
+        return b""
+
+def send_packet_to_client(conn: socket.socket, encrypted_data: bytes):
+    try:
+        data_length = len(encrypted_data).to_bytes(4, 'big')
+        conn.sendall(data_length + encrypted_data)
+
+    except Exception as e:
+        print(f"[Error sending packet to client]: {e}")
+
+
+def connect_to_target(packet: pydivert.Packet) -> socket.socket:
+    dest_ip = packet.dst_addr
+    dest_port = packet.dst_port
+    target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    target_sock.settimeout(5)
+    target_sock.connect((dest_ip, dest_port))
+
+    return target_sock
+
 
 SERVER_IP = "0.0.0.0"
 SERVER_PORT = 5000
-SHARED_KEY = b'YOUR_SHARED_SECRET_KEY_HERE_32_BYTES=='
+SHARED_KEY = b'kpOl0dJoPHXokGKiL-T21ZJzE06cVBhcJF441Hg22aU='
 
 
 def server_main():
@@ -48,9 +88,25 @@ def server_main():
             if not encrypted_data:
                 break
 
-            # שימוש במחלקה לפענוח
             decrypted_data = crypto.decrypt(encrypted_data)
-            print(f"Received and decrypted {len(decrypted_data)} bytes from tunnel.")
+
+            new_packet = create_new_packet(decrypted_data, SERVER_IP)
+
+            if new_packet.tcp and new_packet.payload:
+                try:
+                    with connect_to_target(new_packet) as target_sock:
+
+                        send_packet_to_target(target_sock, new_packet)
+
+                        response_data = receive_packet_from_target(target_sock)
+
+                        if response_data:
+                            encrypted_response = crypto.encrypt(response_data)
+                            send_packet_to_client(conn, encrypted_response)
+                            print(f"[Server] Sent {len(encrypted_response)} encrypted bytes back to client.")
+
+                except Exception as target_err:
+                    print(f"[Server Target Error]: {target_err}")
 
     except Exception as e:
         print(f"Server Error: {e}")
