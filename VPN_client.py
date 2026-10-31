@@ -9,7 +9,7 @@ def connect_to_vpn_server(server_ip: str, server_port: int) -> socket.socket:
     return sock
 
 
-def initialize_packet_capture(filter_string="outbound and tcp.DstPort == 80"):
+def initialize_packet_capture(filter_string="outbound and tcp.DstPort == 8080"):
     w = pydivert.WinDivert(filter_string)
     w.open()
     return w
@@ -47,7 +47,7 @@ def inject_packet_to_os(w_handle, decrypted_data: bytes):
         print(f"[Client] Injection error: {e}")
 
 
-SERVER_IP = "127.0.0.1"
+SERVER_IP = "192.168.7.13"
 SERVER_PORT = 5000
 SHARED_KEY = b'kpOl0dJoPHXokGKiL-T21ZJzE06cVBhcJF441Hg22aU='
 
@@ -57,9 +57,9 @@ def client_main():
     sock = connect_to_vpn_server(SERVER_IP, SERVER_PORT)
     print("Client connected to VPN server.")
 
-    w = initialize_packet_capture("outbound and tcp.DstPort == 80")
+    w = initialize_packet_capture("outbound and tcp.DstPort == 8080")
     with w:
-        print("Packet capture started (Outbound TCP port 80).")
+        print("Packet capture started")
         for packet in w:
             try:
                 encrypted_data = crypto.encrypt(packet.raw)
