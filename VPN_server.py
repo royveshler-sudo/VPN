@@ -15,7 +15,7 @@ def accept_client_connection(server_sock: socket.socket):
     return conn, client_addr
 
 
-def receive_packet_from_client(conn: socket.bytes) -> bytes:
+def receive_packet_from_client(conn: socket.socket) -> bytes:
     raw_length = conn.recv(4)
     if not raw_length:
         return b""
