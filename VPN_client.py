@@ -11,7 +11,6 @@ def connect_to_vpn_server(server_ip: str, server_port: int) -> socket.socket:
 
 def initialize_packet_capture(filter_string="outbound and tcp.DstPort == 8080"):
     w = pydivert.WinDivert(filter_string)
-    w.open()
     return w
 
 
@@ -47,7 +46,7 @@ def inject_packet_to_os(w_handle, decrypted_data: bytes):
         print(f"[Client] Injection error: {e}")
 
 
-SERVER_IP = "192.168.7.13"
+SERVER_IP = "172.16.7.148"
 SERVER_PORT = 5000
 SHARED_KEY = b'kpOl0dJoPHXokGKiL-T21ZJzE06cVBhcJF441Hg22aU='
 
@@ -62,6 +61,10 @@ def client_main():
         print("Packet capture started")
         for packet in w:
             try:
+                # וידוא שנתוני הפקטה קיימים ותקינים לפני ההצפנה
+                if not packet or not hasattr(packet, 'raw') or not packet.raw:
+                    continue
+
                 encrypted_data = crypto.encrypt(packet.raw)
                 send_encrypted_packet_to_server(sock, encrypted_data)
 
@@ -73,11 +76,11 @@ def client_main():
                 decrypted_data = decrypt_response(crypto, encrypted_response)
 
                 if decrypted_data:
-                    inject_packet_to_os(w, decrypted_data)
-                    print(f"Client Received, decrypted, and injected {len(decrypted_data)} bytes back to OS.")
+                    print(f"Client Received and decrypted response successfully.")
 
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"Error details: {e}")
+
 
 
 if __name__ == "__main__":
