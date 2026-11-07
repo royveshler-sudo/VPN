@@ -15,7 +15,7 @@ def accept_client_connection(server_sock: socket.socket):
     return conn, client_addr
 
 
-def receive_packet_from_client(conn: socket.bytes) -> bytes:
+def receive_packet_from_client(conn: socket.socket) -> bytes:
     raw_length = conn.recv(4)
     if not raw_length:
         return b""
@@ -28,6 +28,7 @@ def receive_packet_from_client(conn: socket.bytes) -> bytes:
             break
         encrypted_data += chunk
     return encrypted_data
+
 
 def create_new_packet(decrypted_data: bytes, server_ip: str):
     packet = pydivert.Packet(decrypted_data)
@@ -42,6 +43,7 @@ def send_packet_to_target(target_sock: socket.socket, packet: pydivert.Packet):
     except Exception as e:
         print(f"[Error sending to target]: {e}")
 
+
 def receive_packet_from_target(target_sock: socket.socket):
     try:
         data = target_sock.recv(65535)
@@ -49,6 +51,7 @@ def receive_packet_from_target(target_sock: socket.socket):
     except Exception as e:
         print(f"[Error receiving from target]: {e}")
         return b""
+
 
 def send_packet_to_client(conn: socket.socket, encrypted_data: bytes):
     try:
@@ -82,6 +85,8 @@ def server_main():
     conn, client_addr = accept_client_connection(server_sock)
     print(f"Client connected from {client_addr}")
 
+    target_sock = None
+
     try:
         while True:
             encrypted_data = receive_packet_from_client(conn)
@@ -89,28 +94,40 @@ def server_main():
                 break
 
             decrypted_data = crypto.decrypt(encrypted_data)
-
             new_packet = create_new_packet(decrypted_data, SERVER_IP)
 
             if new_packet.tcp and new_packet.payload:
                 try:
-                    with connect_to_target(new_packet) as target_sock:
+                    if target_sock is None:
+                        dest_ip = new_packet.dst_addr
+                        dest_port = new_packet.dst_port
+                        target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        target_sock.settimeout(5)
+                        target_sock.connect((dest_ip, dest_port))
+                        print(f"[Server] Persistent connection established with target at {dest_ip}:{dest_port}")
 
-                        send_packet_to_target(target_sock, new_packet)
 
-                        response_data = receive_packet_from_target(target_sock)
+                    target_sock.sendall(new_packet.payload)
 
-                        if response_data:
-                            encrypted_response = crypto.encrypt(response_data)
-                            send_packet_to_client(conn, encrypted_response)
-                            print(f"[Server] Sent {len(encrypted_response)} encrypted bytes back to client.")
+
+                    response_data = target_sock.recv(65535)
+
+                    if response_data:
+                        encrypted_response = crypto.encrypt(response_data)
+                        send_packet_to_client(conn, encrypted_response)
+                        print(f"[Server] Sent {len(encrypted_response)} encrypted bytes back to client.")
 
                 except Exception as target_err:
                     print(f"[Server Target Error]: {target_err}")
+                    if target_sock:
+                        target_sock.close()
+                        target_sock = None
 
     except Exception as e:
         print(f"Server Error: {e}")
     finally:
+        if target_sock:
+            target_sock.close()
         conn.close()
         server_sock.close()
 

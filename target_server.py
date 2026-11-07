@@ -9,7 +9,14 @@ s_sock.bind(ADDR)
 s_sock.listen(2)
 
 print(f"[Target Server] Listening on {ADDR}...")
-sock = ssl.wrap_socket(s_sock, server_side=True, certfile='keycert.pem')
+
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+
+context.set_ciphers('DEFAULT:@SECLEVEL=0')
+
+context.load_cert_chain(certfile='keycert.pem')
+
+sock = context.wrap_socket(s_sock, server_side=True)
 
 clientsock, addr = sock.accept()
 print(f"[Target Server] Connected from {addr}")
@@ -19,7 +26,7 @@ while True:
     if not data:
         break
     print(f"[Target Server] Received data: {data}")
-    clientsock.sendall(b"HTTP/1.1 200 OK\r\n\r\nHello from VPN Target!")
+    clientsock.sendall(b"HTTP/1.1 200 OK\r\n\r\nHello Back")
 
 clientsock.close()
 sock.close()
